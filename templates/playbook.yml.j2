@@ -4,4 +4,4 @@
   become: true  # we don't expect most docker compose to work without root
 
   tasks:
-{{ tasks | to_yaml | indent(first=True) }}
+{{ tasks | to_yaml(sort_keys=False) | indent(first=True) }}

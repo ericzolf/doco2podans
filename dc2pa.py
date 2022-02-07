@@ -1,10 +1,58 @@
 #!/usr/bin/env python
 import jinja2
+import sys
 import yaml
 
 
-def j2_filter_to_yaml(value):
-    return yaml.dump(value, Dumper=yaml.Dumper)
+# INPUT #
+
+
+def read_yaml_from_file(infile):
+    with open(infile, 'r') as fd:
+        content = yaml.safe_load(fd)
+    return content
+
+
+# TRANSFORM #
+
+
+def doco2podans(doco):
+    tasks = []
+    tasks += extract_networks(doco)
+    tasks += extract_volumes(doco)
+    tasks += extract_containers(doco)
+    return tasks
+
+
+def extract_networks(doco):
+    networks = doco.get('networks', [])
+    if not networks:
+        return []
+    result = [{x: y} for x, y in networks.items()]
+    return result
+
+
+def extract_volumes(doco):
+    volumes = doco.get('volumes', [])
+    if not volumes:
+        return []
+    result = [{x: y} for x, y in volumes.items()]
+    return result
+
+
+def extract_containers(doco):
+    services = doco.get('services', [])
+    if not services:
+        return []
+    result = [{x: y} for x, y in services.items()]
+    return result
+
+
+# OUTPUT #
+
+
+def j2_filter_to_yaml(value, **params):
+    return yaml.dump(value, Dumper=yaml.Dumper, **params)
 
 
 def get_jinja2_environment(path='templates'):
@@ -16,9 +64,23 @@ def get_jinja2_environment(path='templates'):
     return j2_env
 
 
-j2_env = get_jinja2_environment()
-j2_template = j2_env.get_template('{kind}.yml.j2'.format(kind='tasks'))
+def generate_from_template(tasks, path='templates', kind='playbook'):
+    j2_env = get_jinja2_environment(path)
+    j2_template = j2_env.get_template('{kind}.yml.j2'.format(kind=kind))
 
-text = j2_template.render(tasks=[{'a': 1, 'b': 2}, {'x': 3, 'y': 4}])
+    text = j2_template.render(tasks=tasks)
 
-print(text)
+    return text
+
+
+# MAIN #
+
+if __name__ == '__main__':
+    doco_yaml = read_yaml_from_file(sys.argv[1])
+    podans_tasks = doco2podans(doco_yaml)
+    podans_yaml = generate_from_template(
+        tasks=podans_tasks,
+        kind=sys.argv[2],
+    )
+
+    print(podans_yaml)
