@@ -3,6 +3,8 @@ import jinja2
 import sys
 import yaml
 
+# names of podman ansible modules
+
 PODMAN_VOLUME = 'containers.podman.podman_volume'
 PODMAN_NETWORK = 'containers.podman.podman_network'
 PODMAN_CONTAINER = 'containers.podman.podman_container'
