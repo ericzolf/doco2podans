@@ -9,6 +9,10 @@ PODMAN_VOLUME = 'containers.podman.podman_volume'
 PODMAN_NETWORK = 'containers.podman.podman_network'
 PODMAN_CONTAINER = 'containers.podman.podman_container'
 
+VOLUME_SAME = {}
+NETWORK_SAME = {}
+CONTAINER_SAME = {'ports', 'image', 'volumes'}
+
 # INPUT #
 
 
@@ -39,7 +43,13 @@ def extract_networks(doco):
             'name': 'deploy network {}'.format(name),
             PODMAN_NETWORK: {'name': name}
         }
-        task[PODMAN_NETWORK].update(value)
+        # transfer options which are the same ones
+        task[PODMAN_NETWORK].update(
+            {x: y for x, y in value.items() if x in NETWORK_SAME})
+        # FIXME handle for now remaining options to not forget them
+        misc = {x: y for x, y in value.items() if x not in NETWORK_SAME}
+        if misc:
+            task[PODMAN_NETWORK]['misc'] = misc
         network_tasks.append(task)
     return network_tasks
 
@@ -54,7 +64,13 @@ def extract_volumes(doco):
             'name': 'deploy volume {}'.format(name),
             PODMAN_VOLUME: {'name': name}
         }
-        task[PODMAN_VOLUME].update(value)
+        # transfer options which are the same ones
+        task[PODMAN_VOLUME].update(
+            {x: y for x, y in value.items() if x in VOLUME_SAME})
+        # FIXME handle for now remaining options to not forget them
+        misc = {x: y for x, y in value.items() if x not in VOLUME_SAME}
+        if misc:
+            task[PODMAN_VOLUME]['misc'] = misc
         volume_tasks.append(task)
     return volume_tasks
 
@@ -69,7 +85,13 @@ def extract_containers(doco):
             'name': 'deploy container {}'.format(name),
             PODMAN_CONTAINER: {'name': name}
         }
-        task[PODMAN_CONTAINER].update(value)
+        # transfer options which are the same ones
+        task[PODMAN_CONTAINER].update(
+            {x: y for x, y in value.items() if x in CONTAINER_SAME})
+        # FIXME handle for now remaining options to not forget them
+        misc = {x: y for x, y in value.items() if x not in CONTAINER_SAME}
+        if misc:
+            task[PODMAN_CONTAINER]['misc'] = misc
         container_tasks.append(task)
     return container_tasks
 
