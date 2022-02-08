@@ -13,6 +13,8 @@ VOLUME_SAME = {}
 NETWORK_SAME = {}
 CONTAINER_SAME = {'ports', 'image', 'volumes'}
 
+BUILD_CMD = "podman build"  # "buildah build" would also work
+
 # INPUT #
 
 
@@ -88,6 +90,17 @@ def extract_containers(doco):
         # transfer options which are the same ones
         task[PODMAN_CONTAINER].update(
             {x: y for x, y in value.items() if x in CONTAINER_SAME})
+        if 'build' in value:
+            build_task = {
+                'name': 'build image for container {}'.format(name),
+                'command': {
+                    'cmd': BUILD_CMD + ' ' + value['build']
+                },
+                'register': '__image_{}'.format(name)
+            }
+            container_tasks.append(build_task)
+            task[PODMAN_CONTAINER]['image'] = \
+                '{{{{ __image_{}.stdout_lines[-1] }}}}'.format(name)
         # FIXME handle for now remaining options to not forget them
         misc = {x: y for x, y in value.items() if x not in CONTAINER_SAME}
         if misc:

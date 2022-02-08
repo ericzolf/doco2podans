@@ -1,0 +1,3 @@
+# from https://docs.docker.com/compose/gettingstarted/
+flask
+redis
