@@ -3,6 +3,9 @@ import jinja2
 import sys
 import yaml
 
+PODMAN_VOLUME = 'containers.podman.podman_volume'
+PODMAN_NETWORK = 'containers.podman.podman_network'
+PODMAN_CONTAINER = 'containers.podman.podman_container'
 
 # INPUT #
 
@@ -25,27 +28,48 @@ def doco2podans(doco):
 
 
 def extract_networks(doco):
-    networks = doco.get('networks', [])
+    networks = doco.get('networks')
     if not networks:
         return []
-    result = [{x: y} for x, y in networks.items()]
-    return result
+    network_tasks = []
+    for name, value in networks.items():
+        task = {
+            'name': 'deploy network {}'.format(name),
+            PODMAN_NETWORK: {'name': name}
+        }
+        task[PODMAN_NETWORK].update(value)
+        network_tasks.append(task)
+    return network_tasks
 
 
 def extract_volumes(doco):
-    volumes = doco.get('volumes', [])
+    volumes = doco.get('volumes')
     if not volumes:
         return []
-    result = [{x: y} for x, y in volumes.items()]
-    return result
+    volume_tasks = []
+    for name, value in volumes.items():
+        task = {
+            'name': 'deploy volume {}'.format(name),
+            PODMAN_VOLUME: {'name': name}
+        }
+        task[PODMAN_VOLUME].update(value)
+        volume_tasks.append(task)
+    return volume_tasks
 
 
 def extract_containers(doco):
-    services = doco.get('services', [])
+    services = doco.get('services')
     if not services:
         return []
-    result = [{x: y} for x, y in services.items()]
-    return result
+    container_tasks = []
+    for name, value in services.items():
+        task = {
+            'name': 'deploy container {}'.format(name),
+            PODMAN_CONTAINER: {'name': name}
+        }
+        task[PODMAN_CONTAINER].update(value)
+        container_tasks.append(task)
+    return container_tasks
 
 
 # OUTPUT #
@@ -76,8 +100,8 @@ def generate_from_template(tasks, path='templates', kind='playbook'):
 # MAIN #
 
 if __name__ == '__main__':
-    doco_yaml = read_yaml_from_file(sys.argv[1])
-    podans_tasks = doco2podans(doco_yaml)
+    doco_struct = read_yaml_from_file(sys.argv[1])
+    podans_tasks = doco2podans(doco_struct)
     podans_yaml = generate_from_template(
         tasks=podans_tasks,
         kind=sys.argv[2],
