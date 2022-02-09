@@ -131,3 +131,6 @@ dmypy.json
 # Vim temporary and backup files
 .*.swp
 *~
+
+# ignore my own files
+*[._]myown[._]*
