@@ -116,18 +116,18 @@ def extract_containers(doco):
         else:  # FIXME should be an error...
             sys.stderr.write(
                 "WARNING: either 'build' or 'image' must be defined")
-        # we keep together in pods containers which are somehow linked
+        # we keep together in networks containers which are somehow linked
         if 'links' in misc:
-            found_pods = []
+            found_networks = []
             for container in [name] + misc['links']:
-                for pod in linked_containers:
-                    if container in pod:
-                        found_pods.append[pod]
-            if found_pods:
-                for pod in found_pods[1:]:
-                    found_pods[0] |= pod
-                    linked_containers.delete[pod]
-                found_pods[0] |= set([name] + misc['links'])
+                for network in linked_containers:
+                    if container in network:
+                        found_networks.append[network]
+            if found_networks:
+                for network in found_networks[1:]:
+                    found_networks[0] |= network
+                    linked_containers.delete[network]
+                found_networks[0] |= set([name] + misc['links'])
             else:
                 linked_containers.append(set([name] + misc['links']))
             del misc['links']
@@ -136,26 +136,19 @@ def extract_containers(doco):
             task[PODMAN_CONTAINER]['misc'] = misc
         hashed_tasks[name] = task
         container_tasks.append(task)
-    for pod in linked_containers:
-        pod_name = "pod-" + "-".join(pod)
-        pod_task = {
-            'name': 'deploy pod {}'.format(pod_name),
-            PODMAN_POD: {
-                'name': pod_name,
+    for network in linked_containers:
+        network_name = "nw-" + "-".join(network)
+        network_task = {
+            'name': 'deploy network {}'.format(network_name),
+            PODMAN_NETWORK: {
+                'name': network_name,
             }
         }
-        for container in pod:
-            hashed_tasks[container][PODMAN_CONTAINER]['pod'] = pod_name
-            if 'ports' in hashed_tasks[container][PODMAN_CONTAINER]:
-                ports = hashed_tasks[container][PODMAN_CONTAINER].pop('ports')
-                if 'ports' in pod_task[PODMAN_POD]:
-                    pod_task[PODMAN_POD]['ports'] += ports
-                else:
-                    pod_task[PODMAN_POD]['ports'] = ports
-        if 'ports' in pod_task[PODMAN_POD]:
-            # make sure port combinations are unique
-            pod_task[PODMAN_POD]['ports'] = list(set(pod_task[PODMAN_POD]['ports']))
-        container_tasks.insert(0, pod_task)
+        for container in network:
+            # FIXME do we need to handle multiple networks?
+            # FIXME would it be an alternative to use container:<name>
+            hashed_tasks[container][PODMAN_CONTAINER]['network'] = network_name
+        container_tasks.insert(0, network_task)
     return container_tasks
 
 
