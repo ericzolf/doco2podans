@@ -8,12 +8,15 @@ import yaml
 PODMAN_VOLUME = 'containers.podman.podman_volume'
 PODMAN_NETWORK = 'containers.podman.podman_network'
 PODMAN_CONTAINER = 'containers.podman.podman_container'
+PODMAN_POD = 'containers.podman.podman_pod'
 
 VOLUME_SAME = {}
 NETWORK_SAME = {}
 CONTAINER_SAME = {'ports', 'image', 'volumes'}
 
-BUILD_CMD = "podman build"  # "buildah build" would also work
+BUILD_CMD = 'podman build'  # 'buildah build' would also work
+
+DEFAULT_REGISTRY = 'docker.io/library/'
 
 # INPUT #
 
@@ -82,30 +85,77 @@ def extract_containers(doco):
     if not services:
         return []
     container_tasks = []
+    hashed_tasks = {}
+    linked_containers = []
     for name, value in services.items():
         task = {
             'name': 'deploy container {}'.format(name),
-            PODMAN_CONTAINER: {'name': name}
+            PODMAN_CONTAINER: {'name': name, 'hostname': name}
         }
         # transfer options which are the same ones
         task[PODMAN_CONTAINER].update(
             {x: y for x, y in value.items() if x in CONTAINER_SAME})
-        if 'build' in value:
+        # we take care of the remaining options
+        misc = {x: y for x, y in value.items() if x not in CONTAINER_SAME}
+        if 'build' in misc:
             build_task = {
                 'name': 'build image for container {}'.format(name),
                 'command': {
-                    'cmd': BUILD_CMD + ' ' + value['build']
+                    'cmd': BUILD_CMD + ' ' + misc['build']
                 },
                 'register': '__image_{}'.format(name)
             }
             container_tasks.append(build_task)
             task[PODMAN_CONTAINER]['image'] = \
                 '{{{{ __image_{}.stdout_lines[-1] }}}}'.format(name)
+            del misc['build']
+        elif 'image' in task[PODMAN_CONTAINER]:
+            if '/' not in task[PODMAN_CONTAINER]['image']:
+                task[PODMAN_CONTAINER]['image'] = \
+                    DEFAULT_REGISTRY + task[PODMAN_CONTAINER]['image']
+        else:  # FIXME should be an error...
+            sys.stderr.write(
+                "WARNING: either 'build' or 'image' must be defined")
+        # we keep together in pods containers which are somehow linked
+        if 'links' in misc:
+            found_pods = []
+            for container in [name] + misc['links']:
+                for pod in linked_containers:
+                    if container in pod:
+                        found_pods.append[pod]
+            if found_pods:
+                for pod in found_pods[1:]:
+                    found_pods[0] |= pod
+                    linked_containers.delete[pod]
+                found_pods[0] |= set([name] + misc['links'])
+            else:
+                linked_containers.append(set([name] + misc['links']))
+            del misc['links']
         # FIXME handle for now remaining options to not forget them
-        misc = {x: y for x, y in value.items() if x not in CONTAINER_SAME}
         if misc:
             task[PODMAN_CONTAINER]['misc'] = misc
+        hashed_tasks[name] = task
         container_tasks.append(task)
+    for pod in linked_containers:
+        pod_name = "pod-" + "-".join(pod)
+        pod_task = {
+            'name': 'deploy pod {}'.format(pod_name),
+            PODMAN_POD: {
+                'name': pod_name,
+            }
+        }
+        for container in pod:
+            hashed_tasks[container][PODMAN_CONTAINER]['pod'] = pod_name
+            if 'ports' in hashed_tasks[container][PODMAN_CONTAINER]:
+                ports = hashed_tasks[container][PODMAN_CONTAINER].pop('ports')
+                if 'ports' in pod_task[PODMAN_POD]:
+                    pod_task[PODMAN_POD]['ports'] += ports
+                else:
+                    pod_task[PODMAN_POD]['ports'] = ports
+        if 'ports' in pod_task[PODMAN_POD]:
+            # make sure port combinations are unique
+            pod_task[PODMAN_POD]['ports'] = list(set(pod_task[PODMAN_POD]['ports']))
+        container_tasks.insert(0, pod_task)
     return container_tasks
 
 
