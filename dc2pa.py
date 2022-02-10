@@ -51,11 +51,14 @@ def extract_networks(doco):
             'name': 'deploy network {}'.format(name),
             PODMAN_NETWORK: {'name': name}
         }
-        # transfer options which are the same ones
-        task[PODMAN_NETWORK].update(
-            {x: y for x, y in value.items() if x in NETWORK_SAME})
-        # FIXME handle for now remaining options to not forget them
-        misc = {x: y for x, y in value.items() if x not in NETWORK_SAME}
+        if value is None:
+            misc = value
+        else:
+            # transfer options which are the same ones
+            task[PODMAN_NETWORK].update(
+                {x: y for x, y in value.items() if x in NETWORK_SAME})
+            # FIXME handle for now remaining options to not forget them
+            misc = {x: y for x, y in value.items() if x not in NETWORK_SAME}
         if misc:
             task[PODMAN_NETWORK]['misc'] = misc
         network_tasks.append(task)
@@ -72,11 +75,14 @@ def extract_volumes(doco):
             'name': 'deploy volume {}'.format(name),
             PODMAN_VOLUME: {'name': name}
         }
-        # transfer options which are the same ones
-        task[PODMAN_VOLUME].update(
-            {x: y for x, y in value.items() if x in VOLUME_SAME})
-        # FIXME handle for now remaining options to not forget them
-        misc = {x: y for x, y in value.items() if x not in VOLUME_SAME}
+        if value is None:
+            misc = value
+        else:
+            # transfer options which are the same ones
+            task[PODMAN_VOLUME].update(
+                {x: y for x, y in value.items() if x in VOLUME_SAME})
+            # FIXME handle for now remaining options to not forget them
+            misc = {x: y for x, y in value.items() if x not in VOLUME_SAME}
         if misc:
             task[PODMAN_VOLUME]['misc'] = misc
         volume_tasks.append(task)
