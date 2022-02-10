@@ -30,6 +30,7 @@ The following docker-compose features and options are currently mapped:
 ** ports
 ** volumes
 ** links
+** command
 
 == License
 

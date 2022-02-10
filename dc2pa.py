@@ -12,7 +12,7 @@ PODMAN_POD = 'containers.podman.podman_pod'
 
 VOLUME_SAME = {}
 NETWORK_SAME = {}
-CONTAINER_SAME = {'ports', 'image'}
+CONTAINER_SAME = {'ports', 'image', 'command'}
 
 BUILD_CMD = 'podman build'  # 'buildah build' would also work
 
