@@ -12,11 +12,14 @@ PODMAN_POD = 'containers.podman.podman_pod'
 
 VOLUME_SAME = {}
 NETWORK_SAME = {}
-CONTAINER_SAME = {'ports', 'image', 'volumes'}
+CONTAINER_SAME = {'ports', 'image'}
 
 BUILD_CMD = 'podman build'  # 'buildah build' would also work
 
 DEFAULT_REGISTRY = 'docker.io/library/'
+
+# most volumes don't work without it
+VOLUME_OPTION = ":z"
 
 # INPUT #
 
@@ -117,6 +120,13 @@ def extract_containers(doco):
             sys.stderr.write(
                 "WARNING: either 'build' or 'image' must be defined")
         # we keep together in networks containers which are somehow linked
+        if 'volumes' in misc:
+            vols = misc['volumes'][:]
+            for idx, vol in enumerate(vols):
+                if len(vol.split(':')) < 3:
+                    vols[idx] += VOLUME_OPTION
+            task[PODMAN_CONTAINER]['volumes'] = vols
+            del misc['volumes']
         if 'links' in misc:
             found_networks = []
             for container in [name] + misc['links']:
