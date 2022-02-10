@@ -12,7 +12,13 @@ PODMAN_POD = 'containers.podman.podman_pod'
 
 VOLUME_SAME = {}
 NETWORK_SAME = {}
-CONTAINER_SAME = {'ports', 'image', 'command'}
+CONTAINER_SAME = {
+    'ports': 'ports',
+    'image': 'image',
+    'command': 'command',
+    'volumes': 'volumes',
+    'restart': 'restart_policy',
+}
 
 BUILD_CMD = 'podman build'  # 'buildah build' would also work
 
@@ -41,6 +47,14 @@ def doco2podans(doco):
     return tasks
 
 
+def split_same_rest(value, same_map):
+    if value is None:
+        return {}, None
+    same = {same_map[x]: y for x, y in value.items() if x in same_map}
+    rest = {x: y for x, y in value.items() if x not in same_map}
+    return same, rest
+
+
 def extract_networks(doco):
     networks = doco.get('networks')
     if not networks:
@@ -51,16 +65,13 @@ def extract_networks(doco):
             'name': 'deploy network {}'.format(name),
             PODMAN_NETWORK: {'name': name}
         }
-        if value is None:
-            misc = value
-        else:
-            # transfer options which are the same ones
-            task[PODMAN_NETWORK].update(
-                {x: y for x, y in value.items() if x in NETWORK_SAME})
-            # FIXME handle for now remaining options to not forget them
-            misc = {x: y for x, y in value.items() if x not in NETWORK_SAME}
-        if misc:
-            task[PODMAN_NETWORK]['misc'] = misc
+        # transfer options which are the same ones
+        same, rest = split_same_rest(value, NETWORK_SAME)
+        task[PODMAN_NETWORK].update(same)
+        if rest:
+            sys.stderr.write(
+                "WARNING: There are unsupported network options")
+            task[PODMAN_NETWORK]['rest'] = rest
         network_tasks.append(task)
     return network_tasks
 
@@ -75,16 +86,13 @@ def extract_volumes(doco):
             'name': 'deploy volume {}'.format(name),
             PODMAN_VOLUME: {'name': name}
         }
-        if value is None:
-            misc = value
-        else:
-            # transfer options which are the same ones
-            task[PODMAN_VOLUME].update(
-                {x: y for x, y in value.items() if x in VOLUME_SAME})
-            # FIXME handle for now remaining options to not forget them
-            misc = {x: y for x, y in value.items() if x not in VOLUME_SAME}
-        if misc:
-            task[PODMAN_VOLUME]['misc'] = misc
+        # transfer options which are the same ones
+        same, rest = split_same_rest(value, VOLUME_SAME)
+        task[PODMAN_VOLUME].update(same)
+        if rest:
+            sys.stderr.write(
+                "WARNING: There are unsupported volume options")
+            task[PODMAN_VOLUME]['rest'] = rest
         volume_tasks.append(task)
     return volume_tasks
 
@@ -102,22 +110,21 @@ def extract_containers(doco):
             PODMAN_CONTAINER: {'name': name, 'hostname': name}
         }
         # transfer options which are the same ones
-        task[PODMAN_CONTAINER].update(
-            {x: y for x, y in value.items() if x in CONTAINER_SAME})
+        same, rest = split_same_rest(value, CONTAINER_SAME)
+        task[PODMAN_CONTAINER].update(same)
         # we take care of the remaining options
-        misc = {x: y for x, y in value.items() if x not in CONTAINER_SAME}
-        if 'build' in misc:
+        if 'build' in rest:
             build_task = {
                 'name': 'build image for container {}'.format(name),
                 'command': {
-                    'cmd': BUILD_CMD + ' ' + misc['build']
+                    'cmd': BUILD_CMD + ' ' + rest['build']
                 },
                 'register': '__image_{}'.format(name)
             }
             container_tasks.append(build_task)
             task[PODMAN_CONTAINER]['image'] = \
                 '{{{{ __image_{}.stdout_lines[-1] }}}}'.format(name)
-            del misc['build']
+            del rest['build']
         elif 'image' in task[PODMAN_CONTAINER]:
             if '/' not in task[PODMAN_CONTAINER]['image']:
                 task[PODMAN_CONTAINER]['image'] = \
@@ -125,17 +132,15 @@ def extract_containers(doco):
         else:  # FIXME should be an error...
             sys.stderr.write(
                 "WARNING: either 'build' or 'image' must be defined")
-        # we keep together in networks containers which are somehow linked
-        if 'volumes' in misc:
-            vols = misc['volumes'][:]
-            for idx, vol in enumerate(vols):
+        # we improve the volumes by handling SELinux
+        if 'volumes' in task[PODMAN_CONTAINER]:
+            for idx, vol in enumerate(task[PODMAN_CONTAINER]['volumes']):
                 if len(vol.split(':')) < 3:
-                    vols[idx] += VOLUME_OPTION
-            task[PODMAN_CONTAINER]['volumes'] = vols
-            del misc['volumes']
-        if 'links' in misc:
+                    task[PODMAN_CONTAINER]['volumes'][idx] += VOLUME_OPTION
+        # we keep together in networks containers which are somehow linked
+        if 'links' in rest:
             found_networks = []
-            for container in [name] + misc['links']:
+            for container in [name] + rest['links']:
                 for network in linked_containers:
                     if container in network:
                         found_networks.append[network]
@@ -143,13 +148,19 @@ def extract_containers(doco):
                 for network in found_networks[1:]:
                     found_networks[0] |= network
                     linked_containers.delete[network]
-                found_networks[0] |= set([name] + misc['links'])
+                found_networks[0] |= set([name] + rest['links'])
             else:
-                linked_containers.append(set([name] + misc['links']))
-            del misc['links']
+                linked_containers.append(set([name] + rest['links']))
+            del rest['links']
+        if 'environment' in rest:
+            task[PODMAN_CONTAINER]['env'] = dict(
+                [x.split('=', maxsplit=1) for x in rest['environment']])
+            del rest['environment']
         # FIXME handle for now remaining options to not forget them
-        if misc:
-            task[PODMAN_CONTAINER]['misc'] = misc
+        if rest:
+            sys.stderr.write(
+                "WARNING: There are unsupported container options")
+            task[PODMAN_CONTAINER]['rest'] = rest
         hashed_tasks[name] = task
         container_tasks.append(task)
     for network in linked_containers:

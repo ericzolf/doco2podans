@@ -31,6 +31,8 @@ The following docker-compose features and options are currently mapped:
 ** volumes
 ** links
 ** command
+** restart
+** environment
 
 == License
 
