@@ -2,13 +2,34 @@
 
 The idea would be to transform Docker Compose yaml files into Ansible playbooks using the https://github.com/containers/ansible-podman-collections[containers.podman collection] to reach the same effect.
 
-NOTE: at this stage it is just an idea, not sure I'll find ever the time and the need to work on this.
+NOTE: at this stage it is just an idea, not sure I'll find ever the time and the need to work properly on this.
 You're better off trying your luck with https://github.com/containers/podman-compose[podman-compose] for now.
 
 I've already converted (manually) some https://github.com/docker-library/docs/blob/master/nextcloud/README.md#running-this-image-with-docker-compose[Nextcloud docker-compose example] to https://gitlab.com/EricPublic/miscericlaneous/-/tree/master/nextcloud_atomic[Docker Ansible], then to https://gitlab.com/EricPublic/miscericlaneous/-/tree/master/nextcloud_container[Podman Ansible].
 I didn't find it too difficult (after the podman collection was released) despite some quirks, especially around networking.
 
 The advantage is more programmatical flexibility given by Ansible, and the possibility to intermingle the automation with non-container aspects.
+
+== Usage
+
+.Usage
+----
+./dc2pa.py <docker-compose.yml> [<playbook|tasks>] [> somefile.yml]
+----
+
+At this stage, doco2podans only outputs either a playbook or a tasks file (if you want to create a role out of it), which you'll have to redirect to the file of your choice.
+
+The following docker-compose features and options are currently mapped:
+
+* volumes
+** name
+* networks
+** name
+* services (containers)
+** build or image
+** ports
+** volumes
+** links
 
 == License
 
