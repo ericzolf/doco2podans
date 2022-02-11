@@ -17,15 +17,13 @@ CONTAINER_SAME = {
     'image': 'image',
     'command': 'command',
     'volumes': 'volumes',
+    'volumes_from': 'volumes_from',
     'restart': 'restart_policy',
 }
 
 BUILD_CMD = 'podman build'  # 'buildah build' would also work
 
 DEFAULT_REGISTRY = 'docker.io/library/'
-
-# most volumes don't work without it
-VOLUME_OPTION = ":z"
 
 # INPUT #
 
@@ -70,7 +68,7 @@ def extract_networks(doco):
         task[PODMAN_NETWORK].update(same)
         if rest:
             sys.stderr.write(
-                "WARNING: There are unsupported network options")
+                "WARNING: There are unsupported network options\n")
             task[PODMAN_NETWORK]['rest'] = rest
         network_tasks.append(task)
     return network_tasks
@@ -91,7 +89,7 @@ def extract_volumes(doco):
         task[PODMAN_VOLUME].update(same)
         if rest:
             sys.stderr.write(
-                "WARNING: There are unsupported volume options")
+                "WARNING: There are unsupported volume options\n")
             task[PODMAN_VOLUME]['rest'] = rest
         volume_tasks.append(task)
     return volume_tasks
@@ -104,6 +102,7 @@ def extract_containers(doco):
     container_tasks = []
     hashed_tasks = {}
     linked_containers = []
+    shared_volume_containers = set()
     for name, value in services.items():
         task = {
             'name': 'deploy container {}'.format(name),
@@ -132,18 +131,17 @@ def extract_containers(doco):
         else:  # FIXME should be an error...
             sys.stderr.write(
                 "WARNING: either 'build' or 'image' must be defined")
-        # we improve the volumes by handling SELinux
-        if 'volumes' in task[PODMAN_CONTAINER]:
-            for idx, vol in enumerate(task[PODMAN_CONTAINER]['volumes']):
-                if len(vol.split(':')) < 3:
-                    task[PODMAN_CONTAINER]['volumes'][idx] += VOLUME_OPTION
+        # keep trace of linked volumes
+        if 'volumes_from' in task[PODMAN_CONTAINER]:
+            shared_volume_containers |= set(
+                task[PODMAN_CONTAINER]['volumes_from'])
         # we keep together in networks containers which are somehow linked
         if 'links' in rest:
             found_networks = []
             for container in [name] + rest['links']:
                 for network in linked_containers:
                     if container in network:
-                        found_networks.append[network]
+                        found_networks.append(network)
             if found_networks:
                 for network in found_networks[1:]:
                     found_networks[0] |= network
@@ -159,7 +157,7 @@ def extract_containers(doco):
         # FIXME handle for now remaining options to not forget them
         if rest:
             sys.stderr.write(
-                "WARNING: There are unsupported container options")
+                "WARNING: There are unsupported container options\n")
             task[PODMAN_CONTAINER]['rest'] = rest
         hashed_tasks[name] = task
         container_tasks.append(task)
@@ -176,6 +174,24 @@ def extract_containers(doco):
             # FIXME would it be an alternative to use container:<name>
             hashed_tasks[container][PODMAN_CONTAINER]['network'] = network_name
         container_tasks.insert(0, network_task)
+    # we improve the volumes by adding SELinux labels
+    for name, task in hashed_tasks.items():
+        if 'volumes' in task[PODMAN_CONTAINER]:
+            if name in shared_volume_containers:
+                label = 'z'  # shared SELinux label
+            else:
+                label = 'Z'  # individual SELinux label
+            for idx, vol in enumerate(task[PODMAN_CONTAINER]['volumes']):
+                vols = vol.split(':')
+                if len(vols) < 3:
+                    task[PODMAN_CONTAINER]['volumes'][idx] = ":".join(
+                        vols + [label])
+                else:
+                    opts = vols[-1].split(',')
+                    if 'z' not in opts and 'Z' not in opts:
+                        task[PODMAN_CONTAINER]['volumes'][idx] = ":".join(
+                            vols[:-1] + [','.join(opts + [label])])
+                        
     return container_tasks
 
 

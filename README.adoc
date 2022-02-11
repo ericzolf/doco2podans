@@ -19,6 +19,12 @@ The advantage is more programmatical flexibility given by Ansible, and the possi
 
 At this stage, doco2podans only outputs either a playbook or a tasks file (if you want to create a role out of it), which you'll have to redirect to the file of your choice.
 
+You'll then only have to call the playbook with sudo-rights:
+
+----
+ansible-playbook -K somefile.yml
+----
+
 The following docker-compose features and options are currently mapped:
 
 * volumes
@@ -29,6 +35,7 @@ The following docker-compose features and options are currently mapped:
 ** build or image
 ** ports
 ** volumes
+** volumes_from
 ** links
 ** command
 ** restart
