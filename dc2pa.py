@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import argparse
 import jinja2
 import sys
 import yaml
@@ -28,9 +29,11 @@ DEFAULT_REGISTRY = 'docker.io/library/'
 # INPUT #
 
 
-def read_yaml_from_file(infile):
-    with open(infile, 'r') as fd:
-        content = yaml.safe_load(fd)
+def read_doco_from_file(infile):
+    """
+    Read a Python structure from a Docker Compose file
+    """
+    content = yaml.safe_load(infile)
     return content
 
 
@@ -38,10 +41,13 @@ def read_yaml_from_file(infile):
 
 
 def doco2podans(doco):
+    """
+    Transforms a Docker Compose structure into a Podman Ansible one
+    """
     tasks = []
-    tasks += extract_networks(doco)
-    tasks += extract_volumes(doco)
-    tasks += extract_containers(doco)
+    tasks += extract_network_tasks(doco)
+    tasks += extract_volume_tasks(doco)
+    tasks += extract_container_tasks(doco)
     return tasks
 
 
@@ -53,7 +59,10 @@ def split_same_rest(value, same_map):
     return same, rest
 
 
-def extract_networks(doco):
+def extract_network_tasks(doco):
+    """
+    Extract network Ansible tasks from a Docker Compose structure
+    """
     networks = doco.get('networks')
     if not networks:
         return []
@@ -74,7 +83,10 @@ def extract_networks(doco):
     return network_tasks
 
 
-def extract_volumes(doco):
+def extract_volume_tasks(doco):
+    """
+    Extract volume Ansible tasks from a Docker Compose structure
+    """
     volumes = doco.get('volumes')
     if not volumes:
         return []
@@ -95,7 +107,10 @@ def extract_volumes(doco):
     return volume_tasks
 
 
-def extract_containers(doco):
+def extract_container_tasks(doco):
+    """
+    Extract volume Ansible tasks from a Docker Compose structure
+    """
     services = doco.get('services')
     if not services:
         return []
@@ -191,7 +206,7 @@ def extract_containers(doco):
                     if 'z' not in opts and 'Z' not in opts:
                         task[PODMAN_CONTAINER]['volumes'][idx] = ":".join(
                             vols[:-1] + [','.join(opts + [label])])
-                        
+
     return container_tasks
 
 
@@ -199,10 +214,16 @@ def extract_containers(doco):
 
 
 def j2_filter_to_yaml(value, **params):
+    """
+    Implements a to_yaml filter for Jinja2 templates
+    """
     return yaml.dump(value, Dumper=yaml.Dumper, **params)
 
 
 def get_jinja2_environment(path='templates'):
+    """
+    Get a Jinja2 environment from the templates directory
+    """
     j2_env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(path),
         autoescape=jinja2.select_autoescape()
@@ -212,6 +233,11 @@ def get_jinja2_environment(path='templates'):
 
 
 def generate_from_template(tasks, path='templates', kind='playbook'):
+    """
+    Generate a string from a certain structure, assumed to be Ansible tasks
+
+    path is the directory where to find the template of the kind given
+    """
     j2_env = get_jinja2_environment(path)
     j2_template = j2_env.get_template('{kind}.yml.j2'.format(kind=kind))
 
@@ -220,14 +246,34 @@ def generate_from_template(tasks, path='templates', kind='playbook'):
     return text
 
 
+def parse_arguments():
+    """
+    Parse arguments from sys.argv
+
+    Returns the parsed arguments
+    """
+    parser = argparse.ArgumentParser(
+        description="Translate Docker Compose to Podman Ansible")
+    parser.add_argument('--kind', default='playbook',
+                        choices=['playbook', 'tasks'],
+                        help='sum the integers (default: find the max)')
+    parser.add_argument('doco', type=argparse.FileType('r'),
+                        help='a source docker compose file')
+    parser.add_argument('podans', type=argparse.FileType('w'),
+                        default=sys.stdout, nargs='?',
+                        help='a target Ansible file')
+    parsed_args = parser.parse_args()
+    return parsed_args
+
+
 # MAIN #
 
 if __name__ == '__main__':
-    doco_struct = read_yaml_from_file(sys.argv[1])
-    podans_tasks = doco2podans(doco_struct)
+    args = parse_arguments()
+    doco_struct = read_doco_from_file(args.doco)
+    podans_struct = doco2podans(doco_struct)
     podans_yaml = generate_from_template(
-        tasks=podans_tasks,
-        kind=sys.argv[2],
+        tasks=podans_struct,
+        kind=args.kind,
     )
-
-    print(podans_yaml)
+    args.podans.write(podans_yaml)

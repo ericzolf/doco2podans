@@ -14,10 +14,10 @@ The advantage is more programmatical flexibility given by Ansible, and the possi
 
 .Usage
 ----
-./dc2pa.py <docker-compose.yml> [<playbook|tasks>] [> somefile.yml]
+./dc2pa.py [--kind <playbook|tasks>] <docker-compose.yml> [podman-ansible.yml]
 ----
 
-At this stage, doco2podans only outputs either a playbook or a tasks file (if you want to create a role out of it), which you'll have to redirect to the file of your choice.
+At this stage, doco2podans only outputs either a playbook or a tasks file (if you want to create a role out of it), either to stdout or to a file given.
 
 You'll then only have to call the playbook with sudo-rights:
 
