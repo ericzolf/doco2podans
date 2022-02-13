@@ -44,7 +44,7 @@ def read_doco_from_file(infile):
 # TRANSFORM #
 
 
-def doco2podans(doco):
+def doco2podans(doco, args):
     """
     Transforms a Docker Compose structure into a Podman Ansible one
     """
@@ -52,7 +52,7 @@ def doco2podans(doco):
     tasks += extract_secret_tasks(doco)
     tasks += extract_network_tasks(doco)
     tasks += extract_volume_tasks(doco)
-    tasks += extract_container_tasks(doco)
+    tasks += extract_container_tasks(doco, args)
     return tasks
 
 
@@ -125,7 +125,7 @@ def extract_volume_tasks(doco):
     return volume_tasks
 
 
-def extract_container_tasks(doco):
+def extract_container_tasks(doco, args):
     """
     Extract volume Ansible tasks from a Docker Compose structure
     """
@@ -170,6 +170,9 @@ def extract_container_tasks(doco):
             del rest['environment']
         if 'depends_on' in rest:
             container_graph[name].extend(rest['depends_on'])
+            if args.depends_network:
+                extract_container_links([name] + rest['depends_on'],
+                                        linked_containers)
             del rest['depends_on']
         # FIXME handle for now remaining options to not forget them
         if rest:
@@ -361,6 +364,9 @@ def parse_arguments():
     parser.add_argument('--kind', default='playbook',
                         choices=['playbook', 'tasks'],
                         help='kind of Ansible file to create')
+    parser.add_argument('--depends-network',
+                        action=argparse.BooleanOptionalAction,
+                        help='create network out of dependencies')
     parser.add_argument('doco', type=argparse.FileType('r'),
                         help='a source docker compose file')
     parser.add_argument('podans', type=argparse.FileType('w'),
@@ -375,7 +381,7 @@ def parse_arguments():
 if __name__ == '__main__':
     args = parse_arguments()
     doco_struct = read_doco_from_file(args.doco)
-    podans_struct = doco2podans(doco_struct)
+    podans_struct = doco2podans(doco_struct, args)
     podans_yaml = generate_from_template(
         tasks=podans_struct,
         kind=args.kind,

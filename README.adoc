@@ -14,10 +14,14 @@ The advantage is more programmatical flexibility given by Ansible, and the possi
 
 .Usage
 ----
-./dc2pa.py [--kind <playbook|tasks>] <docker-compose.yml> [podman-ansible.yml]
+./dc2pa.py [--depends-network] [--kind <playbook|tasks>] \
+	<docker-compose.yml> [podman-ansible.yml]
 ----
 
 At this stage, doco2podans only outputs either a playbook or a tasks file (if you want to create a role out of it), either to stdout or to a file given.
+
+The `--depends-network` option is interesting to make sure that the containers can resolve each other's name via DNS if they depend on each other.
+It is created jointly with the "linked" networks and is the alternative to adding the `dnsname` to the default podman network.
 
 You'll then only have to call the playbook with sudo-rights:
 
