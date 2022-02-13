@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 import argparse
+import collections
+import graphlib
 import jinja2
 import sys
 import yaml
@@ -123,6 +125,7 @@ def extract_container_tasks(doco):
     hashed_tasks = {}
     linked_containers = []
     shared_volume_containers = set()
+    container_graph = collections.defaultdict(list)  # dependencies
     for name, value in services.items():
         task = {
             'name': 'deploy container {}'.format(name),
@@ -146,6 +149,7 @@ def extract_container_tasks(doco):
         # keep trace of linked volumes
         if 'volumes_from' in task_module:
             shared_volume_containers |= set(task_module['volumes_from'])
+            container_graph[name].extend(task_module['volumes_from'])
         # we keep together in networks containers which are somehow linked
         if 'links' in rest:
             extract_container_links([name] + rest['links'], linked_containers)
@@ -153,6 +157,9 @@ def extract_container_tasks(doco):
         if 'environment' in rest:
             copy_container_env(rest['environment'], task_module)
             del rest['environment']
+        if 'depends_on' in rest:
+            container_graph[name].extend(rest['depends_on'])
+            del rest['depends_on']
         # FIXME handle for now remaining options to not forget them
         if rest:
             sys.stderr.write(
@@ -160,7 +167,6 @@ def extract_container_tasks(doco):
             task_module['rest'] = rest
         # save the created container task in a dict and in our tasks list
         hashed_tasks[name] = task
-        container_tasks.append(task)
     # handle 
     for network in linked_containers:
         network_task = create_linked_network_task(network, hashed_tasks)
@@ -170,6 +176,23 @@ def extract_container_tasks(doco):
         if 'volumes' in task_module:
             improve_container_volume(name, task_module,
                                      shared_volume_containers)
+
+    # Finally add the container tasks according to dependencies
+    if container_graph:
+        # we want to keep as much as possible the initial order hence we
+        # first add the containers without any dependencies
+        for task_name in hashed_tasks:
+            if task_name not in container_graph:
+                container_tasks.append(hashed_tasks[task_name])
+        # then we sort and add the containers with dependencies
+        topo_sorter = graphlib.TopologicalSorter(container_graph)
+        sorted_containers = tuple(topo_sorter.static_order())
+        for task_name in sorted_containers:
+            if task_name in container_graph:
+                container_tasks.append(hashed_tasks[task_name])
+    else:
+        for task_name in hashed_tasks:
+            container_tasks.append(hashed_tasks[task_name])
 
     return container_tasks
 

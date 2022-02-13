@@ -33,13 +33,14 @@ The following docker-compose features and options are currently mapped:
 ** name
 * services (containers)
 ** build or image
+** command
+** depends_on
+** environment
+** links
 ** ports
+** restart
 ** volumes
 ** volumes_from
-** links
-** command
-** restart
-** environment
 
 == License
 
