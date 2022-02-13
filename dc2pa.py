@@ -360,7 +360,7 @@ def parse_arguments():
         description="Translate Docker Compose to Podman Ansible")
     parser.add_argument('--kind', default='playbook',
                         choices=['playbook', 'tasks'],
-                        help='sum the integers (default: find the max)')
+                        help='kind of Ansible file to create')
     parser.add_argument('doco', type=argparse.FileType('r'),
                         help='a source docker compose file')
     parser.add_argument('podans', type=argparse.FileType('w'),
