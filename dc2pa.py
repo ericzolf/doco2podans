@@ -51,11 +51,16 @@ def doco2podans(doco):
     return tasks
 
 
-def split_same_rest(value, same_map):
-    if value is None:
+def split_same_rest(dictionary, same_map):
+    """
+    Split a dictionary between keys in the same_map and keys which aren't.
+
+    Returns both same (with mapped keys) and rest dictionaries.
+    """
+    if dictionary is None:
         return {}, None
-    same = {same_map[x]: y for x, y in value.items() if x in same_map}
-    rest = {x: y for x, y in value.items() if x not in same_map}
+    same = {same_map[x]: y for x, y in dictionary.items() if x in same_map}
+    rest = {x: y for x, y in dictionary.items() if x not in same_map}
     return same, rest
 
 
@@ -123,91 +128,143 @@ def extract_container_tasks(doco):
             'name': 'deploy container {}'.format(name),
             PODMAN_CONTAINER: {'name': name, 'hostname': name}
         }
+        task_module = task[PODMAN_CONTAINER]  # a kind of short link
         # transfer options which are the same ones
         same, rest = split_same_rest(value, CONTAINER_SAME)
-        task[PODMAN_CONTAINER].update(same)
+        task_module.update(same)
         # we take care of the remaining options
         if 'build' in rest:
-            build_task = {
-                'name': 'build image for container {}'.format(name),
-                'command': {
-                    'cmd': BUILD_CMD + ' ' + rest['build']
-                },
-                'register': '__image_{}'.format(name)
-            }
+            build_task = create_build_task(rest['build'], name,
+                                           task_module)
             container_tasks.append(build_task)
-            task[PODMAN_CONTAINER]['image'] = \
-                '{{{{ __image_{}.stdout_lines[-1] }}}}'.format(name)
             del rest['build']
-        elif 'image' in task[PODMAN_CONTAINER]:
-            if '/' not in task[PODMAN_CONTAINER]['image']:
-                task[PODMAN_CONTAINER]['image'] = \
-                    DEFAULT_REGISTRY + task[PODMAN_CONTAINER]['image']
+        elif 'image' in task_module:
+            improve_container_image(task_module)
         else:  # FIXME should be an error...
             sys.stderr.write(
                 "WARNING: either 'build' or 'image' must be defined")
         # keep trace of linked volumes
-        if 'volumes_from' in task[PODMAN_CONTAINER]:
-            shared_volume_containers |= set(
-                task[PODMAN_CONTAINER]['volumes_from'])
+        if 'volumes_from' in task_module:
+            shared_volume_containers |= set(task_module['volumes_from'])
         # we keep together in networks containers which are somehow linked
         if 'links' in rest:
-            found_networks = []
-            for container in [name] + rest['links']:
-                for network in linked_containers:
-                    if container in network:
-                        found_networks.append(network)
-            if found_networks:
-                for network in found_networks[1:]:
-                    found_networks[0] |= network
-                    linked_containers.delete[network]
-                found_networks[0] |= set([name] + rest['links'])
-            else:
-                linked_containers.append(set([name] + rest['links']))
+            extract_container_links([name] + rest['links'], linked_containers)
             del rest['links']
         if 'environment' in rest:
-            task[PODMAN_CONTAINER]['env'] = dict(
-                [x.split('=', maxsplit=1) for x in rest['environment']])
+            copy_container_env(rest['environment'], task_module)
             del rest['environment']
         # FIXME handle for now remaining options to not forget them
         if rest:
             sys.stderr.write(
                 "WARNING: There are unsupported container options\n")
-            task[PODMAN_CONTAINER]['rest'] = rest
+            task_module['rest'] = rest
+        # save the created container task in a dict and in our tasks list
         hashed_tasks[name] = task
         container_tasks.append(task)
+    # handle 
     for network in linked_containers:
-        network_name = "nw-" + "-".join(network)
-        network_task = {
-            'name': 'deploy network {}'.format(network_name),
-            PODMAN_NETWORK: {
-                'name': network_name,
-            }
-        }
-        for container in network:
-            # FIXME do we need to handle multiple networks?
-            # FIXME would it be an alternative to use container:<name>
-            hashed_tasks[container][PODMAN_CONTAINER]['network'] = network_name
+        network_task = create_linked_network_task(network, hashed_tasks)
         container_tasks.insert(0, network_task)
-    # we improve the volumes by adding SELinux labels
+    # improve the volumes by adding SELinux labels
     for name, task in hashed_tasks.items():
-        if 'volumes' in task[PODMAN_CONTAINER]:
-            if name in shared_volume_containers:
-                label = 'z'  # shared SELinux label
-            else:
-                label = 'Z'  # individual SELinux label
-            for idx, vol in enumerate(task[PODMAN_CONTAINER]['volumes']):
-                vols = vol.split(':')
-                if len(vols) < 3:
-                    task[PODMAN_CONTAINER]['volumes'][idx] = ":".join(
-                        vols + [label])
-                else:
-                    opts = vols[-1].split(',')
-                    if 'z' not in opts and 'Z' not in opts:
-                        task[PODMAN_CONTAINER]['volumes'][idx] = ":".join(
-                            vols[:-1] + [','.join(opts + [label])])
+        if 'volumes' in task_module:
+            improve_container_volume(name, task_module,
+                                     shared_volume_containers)
 
     return container_tasks
+
+
+def create_build_task(build, container_name, task_module):
+    """
+    Create a container image build task and link it to the container task.
+
+    Return the build task.
+    """
+    build_task = {
+        'name': 'build image for container {}'.format(container_name),
+        'command': {
+            'cmd': BUILD_CMD + ' ' + rest['build']
+        },
+        'register': '__image_{}'.format(container_name)
+    }
+    task_module['image'] = '{{{{ __image_{}.stdout_lines[-1] }}}}'.format(
+        container_name)
+    return build_task
+
+
+def improve_container_image(task_module):
+    """
+    Prefix plain image name with a default registry path
+    """
+    if '/' not in task_module['image']:
+        task_module['image'] = DEFAULT_REGISTRY + task_module['image']
+
+
+def copy_container_env(environment, task_module):
+    """
+    Copy the environment into the 'env' option of the container task
+    """
+    task_module['env'] = dict([x.split('=', maxsplit=1) for x in environment])
+
+
+def extract_container_links(links, linked_containers):
+    """
+    Extract the containers belonging into the same network and save them into
+    the linked_containers variable
+
+    Two different networks containing the same container need to be merged
+    """
+    found_networks = []
+    for container in links:
+        for network in linked_containers:
+            if container in network:
+                found_networks.append(network)
+    if found_networks:
+        for network in found_networks[1:]:
+            found_networks[0] |= network
+            linked_containers.delete[network]
+        found_networks[0] |= set(links)
+    else:
+        linked_containers.append(set(links))
+
+
+def create_linked_network_task(network, hashed_tasks):
+    """
+    Create a network task and link it to the container tasks linked together.
+
+    Return the network task.
+    """
+    network_name = "nw-" + "-".join(network)
+    network_task = {
+        'name': 'deploy network {}'.format(network_name),
+        PODMAN_NETWORK: {
+            'name': network_name,
+        }
+    }
+    for container in network:
+        # FIXME do we need to handle multiple networks?
+        # FIXME would it be an alternative to use container:<name>
+        hashed_tasks[container][PODMAN_CONTAINER]['network'] = network_name
+    return network_task
+
+
+def improve_container_volume(name, task_module, shared_volume_containers):
+    """
+    Add where necessary a shared or individual SELinux label to volumes
+    """
+    if name in shared_volume_containers:
+        label = 'z'  # shared SELinux label
+    else:
+        label = 'Z'  # individual SELinux label
+    for idx, vol in enumerate(task_module['volumes']):
+        vols = vol.split(':')
+        if len(vols) < 3:
+            task_module['volumes'][idx] = ":".join(vols + [label])
+        else:
+            opts = vols[-1].split(',')
+            if 'z' not in opts and 'Z' not in opts:
+                task_module['volumes'][idx] = ":".join(
+                    vols[:-1] + [','.join(opts + [label])])
 
 
 # OUTPUT #
