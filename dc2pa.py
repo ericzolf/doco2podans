@@ -12,6 +12,7 @@ PODMAN_VOLUME = 'containers.podman.podman_volume'
 PODMAN_NETWORK = 'containers.podman.podman_network'
 PODMAN_CONTAINER = 'containers.podman.podman_container'
 PODMAN_POD = 'containers.podman.podman_pod'
+PODMAN_SECRET = 'containers.podman.podman_secret'
 
 VOLUME_SAME = {}
 NETWORK_SAME = {}
@@ -22,6 +23,7 @@ CONTAINER_SAME = {
     'volumes': 'volumes',
     'volumes_from': 'volumes_from',
     'restart': 'restart_policy',
+    'secrets': 'secrets',
 }
 
 BUILD_CMD = 'podman build'  # 'buildah build' would also work
@@ -47,23 +49,32 @@ def doco2podans(doco):
     Transforms a Docker Compose structure into a Podman Ansible one
     """
     tasks = []
+    tasks += extract_secret_tasks(doco)
     tasks += extract_network_tasks(doco)
     tasks += extract_volume_tasks(doco)
     tasks += extract_container_tasks(doco)
     return tasks
 
 
-def split_same_rest(dictionary, same_map):
+def extract_secret_tasks(doco):
     """
-    Split a dictionary between keys in the same_map and keys which aren't.
+    Extract secret Ansible tasks from a Docker Compose structure
+    """
+    secrets = doco.get('secrets')
+    if not secrets:
+        return []
+    secret_tasks = []
+    for name, value in secrets.items():
+        secret = {
+            'name': 'deploy secret {}'.format(name),
+            PODMAN_SECRET: {
+                'name': name,
+                'data': "{{{{ lookup('file', '{}') }}}}".format(value['file'])
+            }
+        }
+        secret_tasks.append(secret)
 
-    Returns both same (with mapped keys) and rest dictionaries.
-    """
-    if dictionary is None:
-        return {}, None
-    same = {same_map[x]: y for x, y in dictionary.items() if x in same_map}
-    rest = {x: y for x, y in dictionary.items() if x not in same_map}
-    return same, rest
+    return secret_tasks
 
 
 def extract_network_tasks(doco):
@@ -195,6 +206,19 @@ def extract_container_tasks(doco):
             container_tasks.append(hashed_tasks[task_name])
 
     return container_tasks
+
+
+def split_same_rest(dictionary, same_map):
+    """
+    Split a dictionary between keys in the same_map and keys which aren't.
+
+    Returns both same (with mapped keys) and rest dictionaries.
+    """
+    if dictionary is None:
+        return {}, None
+    same = {same_map[x]: y for x, y in dictionary.items() if x in same_map}
+    rest = {x: y for x, y in dictionary.items() if x not in same_map}
+    return same, rest
 
 
 def create_build_task(build, container_name, task_module):

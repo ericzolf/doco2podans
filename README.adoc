@@ -27,6 +27,8 @@ ansible-playbook -K somefile.yml
 
 The following docker-compose features and options are currently mapped:
 
+* secrets
+** file
 * volumes
 ** name
 * networks
@@ -39,6 +41,7 @@ The following docker-compose features and options are currently mapped:
 ** links
 ** ports
 ** restart
+** secrets
 ** volumes
 ** volumes_from
 
