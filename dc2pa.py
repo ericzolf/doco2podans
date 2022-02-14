@@ -148,10 +148,7 @@ def extract_container_tasks(doco, args):
     shared_volume_containers = set()
     container_graph = collections.defaultdict(list)  # dependencies
     for name, value in services.items():
-        if args.state == 'present':
-            task = get_stub_task(name, 'container', 'started')
-        else:
-            task = get_stub_task(name, 'container', args.state)
+        task = get_stub_task(name, 'container', args.state)
         task_module = task[ANSMOD['container']]  # a kind of short link
         # transfer options which are the same ones
         same, rest = split_same_rest(value, CONTAINER_SAME)
@@ -333,9 +330,11 @@ def get_stub_task(name, element, state):
         'name': task_name,
         ANSMOD[element]: {
             'name': name,
-            'state': state,
         }
     }
+    # the 'present' state is the default state
+    if state != 'present':
+        task[ANSMOD[element]]['state'] = state
     return task
 
 
