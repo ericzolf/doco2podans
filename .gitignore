@@ -134,3 +134,7 @@ dmypy.json
 
 # ignore my own files
 *[._]myown[._]*
+
+# ignore generated documentation
+*.html
+*.pdf
