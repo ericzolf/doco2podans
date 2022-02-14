@@ -8,11 +8,13 @@ import yaml
 
 # names of podman ansible modules
 
-PODMAN_VOLUME = 'containers.podman.podman_volume'
-PODMAN_NETWORK = 'containers.podman.podman_network'
-PODMAN_CONTAINER = 'containers.podman.podman_container'
-PODMAN_POD = 'containers.podman.podman_pod'
-PODMAN_SECRET = 'containers.podman.podman_secret'
+ANSMOD = {
+    'container': 'containers.podman.podman_container',
+    'network': 'containers.podman.podman_network',
+    'pod': 'containers.podman.podman_pod',
+    'secret': 'containers.podman.podman_secret',
+    'volume': 'containers.podman.podman_volume',
+}
 
 VOLUME_SAME = {}
 NETWORK_SAME = {}
@@ -29,6 +31,12 @@ CONTAINER_SAME = {
 BUILD_CMD = 'podman build'  # 'buildah build' would also work
 
 DEFAULT_REGISTRY = 'docker.io/library/'
+
+STATE_ACTION_MAP = {
+    'present': 'deploy',
+    'started': 'deploy',
+    'absent': 'destroy',
+}
 
 # INPUT #
 
@@ -49,80 +57,82 @@ def doco2podans(doco, args):
     Transforms a Docker Compose structure into a Podman Ansible one
     """
     tasks = []
-    tasks += extract_secret_tasks(doco)
-    tasks += extract_network_tasks(doco)
-    tasks += extract_volume_tasks(doco)
+    tasks += extract_secret_tasks(doco, args)
+    tasks += extract_network_tasks(doco, args)
+    tasks += extract_volume_tasks(doco, args)
     tasks += extract_container_tasks(doco, args)
+    if args.state == 'absent':
+        tasks.reverse()
     return tasks
 
 
-def extract_secret_tasks(doco):
+def extract_secret_tasks(doco, args):
     """
     Extract secret Ansible tasks from a Docker Compose structure
     """
     secrets = doco.get('secrets')
     if not secrets:
         return []
-    secret_tasks = []
+    tasks = []
     for name, value in secrets.items():
-        secret = {
-            'name': 'deploy secret {}'.format(name),
-            PODMAN_SECRET: {
-                'name': name,
-                'data': "{{{{ lookup('file', '{}') }}}}".format(value['file'])
-            }
-        }
-        secret_tasks.append(secret)
+        task = get_stub_task(name, 'secret', args.state)
+        if args.state == 'absent':
+            tasks.append(task)
+            continue
+        task[ANSMOD['secret']]['data'] = \
+            "{{{{ lookup('file', '{}') }}}}".format(value['file'])
+        task[ANSMOD['secret']][args.secret_exists] = True
+        tasks.append(task)
 
-    return secret_tasks
+    return tasks
 
 
-def extract_network_tasks(doco):
+def extract_network_tasks(doco, args):
     """
     Extract network Ansible tasks from a Docker Compose structure
     """
     networks = doco.get('networks')
     if not networks:
         return []
-    network_tasks = []
+    tasks = []
     for name, value in networks.items():
-        task = {
-            'name': 'deploy network {}'.format(name),
-            PODMAN_NETWORK: {'name': name}
-        }
+        task = get_stub_task(name, 'network', args.state)
+        if args.state == 'absent':
+            tasks.append(task)
+            continue
         # transfer options which are the same ones
         same, rest = split_same_rest(value, NETWORK_SAME)
-        task[PODMAN_NETWORK].update(same)
+        task[ANSMOD['network']].update(same)
         if rest:
             sys.stderr.write(
                 "WARNING: There are unsupported network options\n")
-            task[PODMAN_NETWORK]['rest'] = rest
-        network_tasks.append(task)
-    return network_tasks
+            task[ANSMOD['network']]['rest'] = rest
+        tasks.append(task)
+    return tasks
 
 
-def extract_volume_tasks(doco):
+def extract_volume_tasks(doco, args):
     """
     Extract volume Ansible tasks from a Docker Compose structure
     """
     volumes = doco.get('volumes')
     if not volumes:
         return []
-    volume_tasks = []
+    tasks = []
     for name, value in volumes.items():
-        task = {
-            'name': 'deploy volume {}'.format(name),
-            PODMAN_VOLUME: {'name': name}
-        }
+        task = get_stub_task(name, 'volume', args.state)
+        if args.state == 'absent':
+            tasks.append(task)
+            continue
         # transfer options which are the same ones
         same, rest = split_same_rest(value, VOLUME_SAME)
-        task[PODMAN_VOLUME].update(same)
+        task[ANSMOD['volume']].update(same)
         if rest:
             sys.stderr.write(
                 "WARNING: There are unsupported volume options\n")
-            task[PODMAN_VOLUME]['rest'] = rest
-        volume_tasks.append(task)
-    return volume_tasks
+            task[ANSMOD['volume']]['rest'] = rest
+        tasks.append(task)
+    return tasks
 
 
 def extract_container_tasks(doco, args):
@@ -132,29 +142,30 @@ def extract_container_tasks(doco, args):
     services = doco.get('services')
     if not services:
         return []
-    container_tasks = []
+    tasks = []
     hashed_tasks = {}
     linked_containers = []
     shared_volume_containers = set()
     container_graph = collections.defaultdict(list)  # dependencies
     for name, value in services.items():
-        task = {
-            'name': 'deploy container {}'.format(name),
-            PODMAN_CONTAINER: {'name': name, 'hostname': name}
-        }
-        task_module = task[PODMAN_CONTAINER]  # a kind of short link
+        if args.state == 'present':
+            task = get_stub_task(name, 'container', 'started')
+        else:
+            task = get_stub_task(name, 'container', args.state)
+        task_module = task[ANSMOD['container']]  # a kind of short link
         # transfer options which are the same ones
         same, rest = split_same_rest(value, CONTAINER_SAME)
         task_module.update(same)
         # we take care of the remaining options
         if 'build' in rest:
-            build_task = create_build_task(rest['build'], name,
-                                           task_module)
-            container_tasks.append(build_task)
+            if args.state == 'present':
+                build_task = create_build_task(rest['build'], name,
+                                               task_module)
+                tasks.append(build_task)
             del rest['build']
         elif 'image' in task_module:
             improve_container_image(task_module)
-        else:  # FIXME should be an error...
+        elif args.state == 'present':  # FIXME should be an error...
             sys.stderr.write(
                 "WARNING: either 'build' or 'image' must be defined")
         # keep trace of linked volumes
@@ -183,8 +194,9 @@ def extract_container_tasks(doco, args):
         hashed_tasks[name] = task
     # handle 
     for network in linked_containers:
-        network_task = create_linked_network_task(network, hashed_tasks)
-        container_tasks.insert(0, network_task)
+        network_task = create_linked_network_task(network, hashed_tasks,
+                                                  args.state)
+        tasks.insert(0, network_task)
     # improve the volumes by adding SELinux labels
     for name, task in hashed_tasks.items():
         if 'volumes' in task_module:
@@ -197,18 +209,18 @@ def extract_container_tasks(doco, args):
         # first add the containers without any dependencies
         for task_name in hashed_tasks:
             if task_name not in container_graph:
-                container_tasks.append(hashed_tasks[task_name])
+                tasks.append(hashed_tasks[task_name])
         # then we sort and add the containers with dependencies
         topo_sorter = graphlib.TopologicalSorter(container_graph)
         sorted_containers = tuple(topo_sorter.static_order())
         for task_name in sorted_containers:
             if task_name in container_graph:
-                container_tasks.append(hashed_tasks[task_name])
+                tasks.append(hashed_tasks[task_name])
     else:
         for task_name in hashed_tasks:
-            container_tasks.append(hashed_tasks[task_name])
+            tasks.append(hashed_tasks[task_name])
 
-    return container_tasks
+    return tasks
 
 
 def split_same_rest(dictionary, same_map):
@@ -278,23 +290,18 @@ def extract_container_links(links, linked_containers):
         linked_containers.append(set(links))
 
 
-def create_linked_network_task(network, hashed_tasks):
+def create_linked_network_task(network, hashed_tasks, state):
     """
     Create a network task and link it to the container tasks linked together.
 
     Return the network task.
     """
     network_name = "nw-" + "-".join(network)
-    network_task = {
-        'name': 'deploy network {}'.format(network_name),
-        PODMAN_NETWORK: {
-            'name': network_name,
-        }
-    }
+    network_task = get_stub_task(network_name, 'network', state)
     for container in network:
         # FIXME do we need to handle multiple networks?
         # FIXME would it be an alternative to use container:<name>
-        hashed_tasks[container][PODMAN_CONTAINER]['network'] = network_name
+        hashed_tasks[container][ANSMOD['container']]['network'] = network_name
     return network_task
 
 
@@ -315,6 +322,21 @@ def improve_container_volume(name, task_module, shared_volume_containers):
             if 'z' not in opts and 'Z' not in opts:
                 task_module['volumes'][idx] = ":".join(
                     vols[:-1] + [','.join(opts + [label])])
+
+
+def get_stub_task(name, element, state):
+    """
+    Return a task with task name, Ansible podman module, element name and state
+    """
+    task_name = '{} {} {}'.format(STATE_ACTION_MAP[state], element, name)
+    task = {
+        'name': task_name,
+        ANSMOD[element]: {
+            'name': name,
+            'state': state,
+        }
+    }
+    return task
 
 
 # OUTPUT #
@@ -364,6 +386,13 @@ def parse_arguments():
     parser.add_argument('--kind', default='playbook',
                         choices=['playbook', 'tasks'],
                         help='kind of Ansible file to create')
+    parser.add_argument('--state', default='present',
+                        choices=['present', 'absent'],
+                        help='deploy or destroy')
+    parser.add_argument('--secret-exists', default='skip_existing',
+                        choices=['skip_existing', 'force'],
+                        help='how to handle existing secrets, '
+                        'leave as is or force replacement')
     parser.add_argument('--depends-network',
                         action=argparse.BooleanOptionalAction,
                         help='create network out of dependencies')

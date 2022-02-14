@@ -15,34 +15,53 @@ The advantage is more programmatical flexibility given by Ansible, and the possi
 .Usage
 ----
 ./dc2pa.py [--depends-network] [--kind <playbook|tasks>] \
+	[--state <present|absent>] [--secret-exists <skip_existing|force>]
 	<docker-compose.yml> [podman-ansible.yml]
 ----
 
 At this stage, doco2podans only outputs either a playbook or a tasks file (if you want to create a role out of it), either to stdout or to a file given.
 
+You'll then only have to call the playbook with sudo-rights to deploy the environment:
+
+----
+ansible-playbook -K podman-ansible.yml
+----
+
 The `--depends-network` option is interesting to make sure that the containers can resolve each other's name via DNS if they depend on each other.
 It is created jointly with the "linked" networks and is the alternative to adding the `dnsname` to the default podman network.
 
-You'll then only have to call the playbook with sudo-rights:
+You can use the `--state` option to create two different playbook, one to deploy the environment (the default), one to destroy it:
 
 ----
-ansible-playbook -K somefile.yml
+./dc2pa.py docker-compose.yml playbook-up.yml
+./dc2pa.py --state absent docker-compose.yml playbook-down.yml
+ansible-playbook -K playbook-up.yml
+# use the environment...
+ansible-playbook -K playbook-down.yml
 ----
 
-The following docker-compose features and options are currently mapped:
+CAUTION: make sure to use the same `--depends-network` option with both calls of `dc2pa.py` or you might get an inconsistent result.
+
+And the `--secret-exists` option allows to decide if existing secrets should be skipped (the default) or forcefully replaced, as Ansible can't decide itself if secrets have changed or not (the content is secret!).
+
+== Scope
+
+The following 'docker-compose' features and options are currently mapped:
 
 * secrets
 ** file
+** name (key/implicit)
 * volumes
-** name
+** name (key/implicit)
 * networks
-** name
+** name (key/implicit)
 * services (containers)
 ** build or image
 ** command
 ** depends_on
 ** environment
 ** links
+** name (key/implicit)
 ** ports
 ** restart
 ** secrets
