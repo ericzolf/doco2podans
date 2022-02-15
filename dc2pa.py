@@ -3,6 +3,7 @@ import argparse
 import collections
 import graphlib
 import jinja2
+import re
 import sys
 import yaml
 
@@ -22,10 +23,12 @@ CONTAINER_SAME = {
     'ports': 'ports',
     'image': 'image',
     'command': 'command',
+    'hostname': 'hostname',
     'volumes': 'volumes',
     'volumes_from': 'volumes_from',
     'restart': 'restart_policy',
     'secrets': 'secrets',
+    'shm_size': 'shm_size',
 }
 
 BUILD_CMD = 'podman build'  # 'buildah build' would also work
@@ -37,6 +40,8 @@ STATE_ACTION_MAP = {
     'started': 'deploy',
     'absent': 'destroy',
 }
+
+ENV_REGEX = re.compile(r'\${?([A-Za-z_]+)}?')
 
 # INPUT #
 
@@ -63,6 +68,7 @@ def doco2podans(doco, args):
     tasks += extract_container_tasks(doco, args)
     if args.state == 'absent':
         tasks.reverse()
+    tasks = recurse_replace_envvars(tasks)
     return tasks
 
 
@@ -174,7 +180,7 @@ def extract_container_tasks(doco, args):
             extract_container_links([name] + rest['links'], linked_containers)
             del rest['links']
         if 'environment' in rest:
-            copy_container_env(rest['environment'], task_module)
+            task_module['env'] = extract_container_env(rest['environment'])
             del rest['environment']
         if 'depends_on' in rest:
             container_graph[name].extend(rest['depends_on'])
@@ -259,11 +265,14 @@ def improve_container_image(task_module):
         task_module['image'] = DEFAULT_REGISTRY + task_module['image']
 
 
-def copy_container_env(environment, task_module):
+def extract_container_env(environment):
     """
-    Copy the environment into the 'env' option of the container task
+    Return the environment in the correct format
     """
-    task_module['env'] = dict([x.split('=', maxsplit=1) for x in environment])
+    if isinstance(environment, dict):
+        return environment
+    else:
+        return dict([x.split('=', maxsplit=1) for x in environment])
 
 
 def extract_container_links(links, linked_containers):
@@ -402,6 +411,22 @@ def parse_arguments():
                         help='a target Ansible file')
     parsed_args = parser.parse_args()
     return parsed_args
+
+
+def recurse_replace_envvars(struct):
+    """
+    Replace environment variables of the form $XXX or ${ENV} recursively
+
+    Returns the structure with replaced environment variables
+    """
+    if isinstance(struct, list):
+        return [recurse_replace_envvars(x) for x in struct]
+    elif isinstance(struct, dict):
+        return {x: recurse_replace_envvars(y) for x,y in struct.items()}
+    elif isinstance(struct, str):
+        return ENV_REGEX.sub(r"{{ lookup('env', '\1') }}", struct)
+    else:
+        return struct
 
 
 # MAIN #

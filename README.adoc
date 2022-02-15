@@ -60,11 +60,13 @@ The following 'docker-compose' features and options are currently mapped:
 ** command
 ** depends_on
 ** environment
+** hostname
 ** links
 ** name (key/implicit)
 ** ports
 ** restart
 ** secrets
+** shm_size
 ** volumes
 ** volumes_from
 
