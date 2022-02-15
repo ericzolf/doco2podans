@@ -33,7 +33,8 @@ CONTAINER_SAME = {
 
 BUILD_CMD = 'podman build'  # 'buildah build' would also work
 
-DEFAULT_REGISTRY = 'docker.io/library/'
+DEFAULT_REGISTRY = 'docker.io'
+DEFAULT_LIBRARY = 'library'
 
 STATE_ACTION_MAP = {
     'present': 'deploy',
@@ -261,8 +262,13 @@ def improve_container_image(task_module):
     """
     Prefix plain image name with a default registry path
     """
-    if '/' not in task_module['image']:
-        task_module['image'] = DEFAULT_REGISTRY + task_module['image']
+    count = task_module['image'].count('/')
+    if count == 0:
+        task_module['image'] = '/'.join(
+            (DEFAULT_REGISTRY, DEFAULT_LIBRARY, task_module['image']))
+    elif count == 1:
+        task_module['image'] = '/'.join(
+            (DEFAULT_REGISTRY, task_module['image']))
 
 
 def extract_container_env(environment):
