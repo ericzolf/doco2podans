@@ -70,6 +70,19 @@ The following 'docker-compose' features and options are currently mapped:
 ** volumes
 ** volumes_from
 
+The focus will be on freely available docker compose examples for open source products.
+Feature requests will need to be supported by a link to such an example.
+Requests along the line that the specs have an obscure feature unsupported by the tool, without concrete real life repeatable example, will be closed.
+
+Also the purpose isn't to _improve_ the resulting Ansible code but to make it running as good, or as bad, as it used to run with docker-compose.
+For example, secret files and environment variables are generally best replaced by Ansible vaults and variables, but this is something users will have to improve themselves, starting from a working Ansible playbook generated from the docker-compose file.
+
+Everybody is encouraged to use the non-root feature of podman, but it is also beyond the scope of this tool to make sure that it works, as it might even imply changes to the underlying container image.
+This is the reason why the playbook is created with `become: true`, but changing it into `become: false` and checking if it works isn't so big a deal.
+Fixing possible incompatibilities is a bigger deal which can't be covered by doco2podans.
+
+TIP: one of the main things to consider is to not use host ports below 1024.
+
 == License
 
 GPLv3+, see link:LICENSE[LICENSE].
