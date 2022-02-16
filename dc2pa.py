@@ -147,6 +147,7 @@ def extract_container_tasks(doco, args):
     Extract volume Ansible tasks from a Docker Compose structure
     """
     services = doco.get('services')
+    configs = doco.get('configs')
     if not services:
         return []
     tasks = []
@@ -189,6 +190,9 @@ def extract_container_tasks(doco, args):
                 extract_container_links([name] + rest['depends_on'],
                                         linked_containers)
             del rest['depends_on']
+        if 'configs' in rest:
+            add_configs_to_volumes(task_module, rest['configs'], configs)
+            del rest['configs']
         # FIXME handle for now remaining options to not forget them
         if rest:
             sys.stderr.write(
@@ -203,8 +207,8 @@ def extract_container_tasks(doco, args):
         tasks.insert(0, network_task)
     # improve the volumes by adding SELinux labels
     for name, task in hashed_tasks.items():
-        if 'volumes' in task_module:
-            improve_container_volume(name, task_module,
+        if 'volumes' in task[ANSMOD['container']]:
+            improve_container_volume(name, task[ANSMOD['container']],
                                      shared_volume_containers)
 
     # Finally add the container tasks according to dependencies
@@ -351,6 +355,20 @@ def get_stub_task(name, element, state):
     if state != 'present':
         task[ANSMOD[element]]['state'] = state
     return task
+
+
+def add_configs_to_volumes(task_module, task_configs, configs):
+    if 'volumes' not in task_module:
+        task_module['volumes'] = []
+    for config in task_configs:
+        if isinstance(config, dict):
+            source = configs[config['source']]['file']
+            target = config.get('target', '/' + config['source'])
+        else:
+            source = configs[config]['file']
+            target = '/' + config
+        # configs are always potentially shared, hence (small) z
+        task_module['volumes'].append(':'.join((source, target, 'z')))
 
 
 # OUTPUT #
