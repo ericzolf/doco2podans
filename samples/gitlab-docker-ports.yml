@@ -1,4 +1,7 @@
 # from https://docs.gitlab.com/ee/install/docker.html#install-gitlab-using-docker-compose
+# rm -fr ./gitlab/{data,logs,config}.myown.d
+# mkdir -p ./gitlab/{data,logs,config}.myown.d
+# export GITLAB_HOME=./gitlab
 version: '3.6'
 services:
   web:
@@ -13,7 +16,7 @@ services:
       - '8929:8929'
       - '2224:22'
     volumes:
-      - '$GITLAB_HOME/config:/etc/gitlab'
-      - '$GITLAB_HOME/logs:/var/log/gitlab'
-      - '$GITLAB_HOME/data:/var/opt/gitlab'
+      - '$GITLAB_HOME/config.myown.d:/etc/gitlab'
+      - '$GITLAB_HOME/logs.myown.d:/var/log/gitlab'
+      - '$GITLAB_HOME/data.myown.d:/var/opt/gitlab'
     shm_size: '256m'

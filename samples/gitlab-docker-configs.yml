@@ -1,0 +1,31 @@
+# from https://docs.gitlab.com/ee/install/docker.html#install-gitlab-using-docker-swarm-mode
+# rm -fr ./gitlab/{data,logs,config}.myown.d
+# mkdir -p ./gitlab/{data,logs,config}.myown.d
+# export GITLAB_HOME=./gitlab
+version: "3.6"
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    ports:
+      - "2222:22"
+      - "8080:8080"
+    volumes:
+      - $GITLAB_HOME/data.myown.d:/var/opt/gitlab
+      - $GITLAB_HOME/logs.myown.d:/var/log/gitlab
+      - $GITLAB_HOME/config.myown.d:/etc/gitlab
+    shm_size: '256m'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: "from_file('/omnibus_config.rb')"
+    configs:
+      - source: gitlab
+        target: /omnibus_config.rb
+    secrets:
+      - gitlab_root_password
+  gitlab-runner:
+    image: gitlab/gitlab-runner:alpine
+configs:
+  gitlab:
+    file: ./gitlab/gitlab-insecure.rb
+secrets:
+  gitlab_root_password:
+    file: ./gitlab/root_password.txt
