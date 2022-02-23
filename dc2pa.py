@@ -44,6 +44,8 @@ STATE_ACTION_MAP = {
 
 ENV_REGEX = re.compile(r'\${?([A-Za-z_]+)}?')
 
+PODMAN_SOCKET = '/run/podman/podman.sock'
+
 # INPUT #
 
 
@@ -211,8 +213,16 @@ def extract_container_tasks(doco, args):
     # improve the volumes by adding SELinux labels
     for name, task in hashed_tasks.items():
         if 'volumes' in task[ANSMOD['container']]:
-            improve_container_volume(name, task[ANSMOD['container']],
-                                     shared_volume_containers)
+            labels = improve_container_volume(name, task[ANSMOD['container']],
+                                              shared_volume_containers)
+        if not labels:
+            sys.stderr.write(
+                "NOTE:    don't forget to start the podman service!\n")
+            if 'security_opt' in task[ANSMOD['container']]:
+                task[ANSMOD['container']]['security_opt'].append(
+                    'label=disable')
+            else:
+                task[ANSMOD['container']]['security_opt'] = ['label=disable']
 
     # Finally add the container tasks according to dependencies
     if container_graph:
@@ -327,14 +337,21 @@ def create_linked_network_task(network, hashed_tasks, state):
 
 def improve_container_volume(name, task_module, shared_volume_containers):
     """
-    Add where necessary a shared or individual SELinux label to volumes
+    Add where necessary a shared or individual SELinux label to volumes,
+    and potentially replace docker.sock with podman.sock
+
+    In this case, return false to show that labels must be disabled
     """
+    labels = True
     if name in shared_volume_containers:
         label = 'z'  # shared SELinux label
     else:
         label = 'Z'  # individual SELinux label
     for idx, vol in enumerate(task_module['volumes']):
         vols = vol.split(':')
+        if vols[0] == '/var/run/docker.sock':
+            vols[0] = PODMAN_SOCKET
+            labels = False
         if len(vols) < 3:
             task_module['volumes'][idx] = ":".join(vols + [label])
         else:
@@ -342,6 +359,7 @@ def improve_container_volume(name, task_module, shared_volume_containers):
             if 'z' not in opts and 'Z' not in opts:
                 task_module['volumes'][idx] = ":".join(
                     vols[:-1] + [','.join(opts + [label])])
+    return labels
 
 
 def get_stub_task(name, element, state):

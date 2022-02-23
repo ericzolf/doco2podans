@@ -44,6 +44,9 @@ CAUTION: make sure to use the same `--depends-network` option with both calls of
 
 And the `--secret-exists` option allows to decide if existing secrets should be skipped (the default) or forcefully replaced, as Ansible can't decide itself if secrets have changed or not (the content is secret!).
 
+TIP: if any of your containers needs access to `/var/run/docker.sock`, it'll be mapped to `/run/podman/podman.sock` and you'll have to start the podman service.
+You can do it either with `sudo systemctl start podman` or temporarily in a terminal e.g. with `sudo podman system service --time=0`.
+
 == Scope
 
 The following 'docker-compose' features and options are currently mapped:
