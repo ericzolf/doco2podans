@@ -326,7 +326,7 @@ def create_linked_network_task(network, hashed_tasks, state):
 
     Return the network task.
     """
-    network_name = "nw-" + "-".join(network)
+    network_name = "nw-" + "-".join(sorted(network))
     network_task = get_stub_task(network_name, 'network', state)
     for container in network:
         # FIXME do we need to handle multiple networks?
