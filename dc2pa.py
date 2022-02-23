@@ -182,8 +182,11 @@ def extract_container_tasks(doco, args):
             extract_container_links([name] + rest['links'], linked_containers)
             del rest['links']
         if 'environment' in rest:
-            task_module['env'] = extract_container_env(rest['environment'])
+            task_module['env'] = extract_container_dict(rest['environment'])
             del rest['environment']
+        if 'labels' in rest:
+            task_module['labels'] = extract_container_dict(rest['labels'])
+            del rest['labels']
         if 'depends_on' in rest:
             container_graph[name].extend(rest['depends_on'])
             if args.depends_network:
@@ -275,14 +278,15 @@ def improve_container_image(task_module):
             (DEFAULT_REGISTRY, task_module['image']))
 
 
-def extract_container_env(environment):
+def extract_container_dict(settings):
     """
-    Return the environment in the correct format
+    Return a potential list of x=y settings into a dictionary,
+    or the dictionary itself
     """
-    if isinstance(environment, dict):
-        return environment
+    if isinstance(settings, dict):
+        return settings
     else:
-        return dict([x.split('=', maxsplit=1) for x in environment])
+        return dict([x.split('=', maxsplit=1) for x in settings])
 
 
 def extract_container_links(links, linked_containers):
