@@ -1,0 +1,36 @@
+# Sample taken from
+# https://fedoramagazine.org/sandbox-ai-coding-agents-with-microvms-on-fedora-linux/
+services:
+  claude:
+    container_name: project-name-claude
+    annotations:
+      run.oci.handler: krun
+      krun.ram_mib: "4096"
+      krun.cpus: "4"
+    user: "${HOST_UID}:${HOST_GID}"
+    userns_mode: keep-id  # optional, for rootless host
+    build:
+      context: .
+      args:
+        HOST_UID: "${HOST_UID}"  # use UID and GID from the host so that files created in the container have correct permissions
+        HOST_GID: "${HOST_GID}"
+    volumes:
+      - ../:/app:U,z  # bind mount your project
+      - project-name-venv-cache:/venv:U,z
+      - claude-config:/home/appuser/.claude:U,z  # persistent claude credentials/config
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    environment:
+      - CLAUDE_CONFIG_DIR=/home/appuser/.claude
+      - UV_LINK_MODE=copy
+      - UV_PROJECT_ENVIRONMENT=/venv/env  # This is inside the cached volume
+      - UV_PYTHON_INSTALL_DIR=/venv/python  # So that uv-managed python installations are not in home but cached in /venv
+      - TERM=xterm-256color
+      - COLORTERM=truecolor
+
+volumes:
+  project-name-venv-cache:
+  claude-config:
+    external: true
+    name: claude-config
