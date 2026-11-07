@@ -17,7 +17,9 @@ ANSMOD = {
     'volume': 'containers.podman.podman_volume',
 }
 
-VOLUME_SAME = {}
+VOLUME_SAME = {
+    'name': 'name',
+}
 NETWORK_SAME = {}
 CONTAINER_SAME = {
     'ports': 'ports',
@@ -265,8 +267,8 @@ def create_build_task(build, container_name, task_module):
     """
     build_task = {
         'name': 'build image for container {}'.format(container_name),
-        'command': {
-            'cmd': BUILD_CMD + ' ' + rest['build']
+        'containers.podman.podman_image': {
+            'build': build
         },
         'register': '__image_{}'.format(container_name)
     }
