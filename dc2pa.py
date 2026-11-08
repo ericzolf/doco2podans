@@ -3,6 +3,7 @@ import argparse
 import collections
 import graphlib
 import jinja2
+import os
 import re
 import sys
 import yaml
@@ -22,6 +23,8 @@ VOLUME_SAME = {
 }
 NETWORK_SAME = {}
 CONTAINER_SAME = {
+    'annotations': 'annotation',
+    'container_name': 'name',
     'ports': 'ports',
     'image': 'image',
     'command': 'command',
@@ -31,6 +34,11 @@ CONTAINER_SAME = {
     'restart': 'restart_policy',
     'secrets': 'secrets',
     'shm_size': 'shm_size',
+    'stdin_open': 'interactive',
+    'tty': 'tty',
+    'user': 'user',
+    'userns_mode': 'userns',
+    'working_dir': 'workdir',
 }
 
 BUILD_CMD = 'podman build'  # 'buildah build' would also work
@@ -131,7 +139,13 @@ def extract_volume_tasks(doco, args):
         return []
     tasks = []
     for name, value in volumes.items():
-        task = get_stub_task(name, 'volume', args.state)
+        if value and value.get('external'):
+            task = get_stub_task(name, 'volume', args.state)
+            task['check_mode'] = True
+        else:
+            task = get_stub_task(f'{args.project}_{name}', 'volume', args.state)
+        if value and 'external' in value:
+            del value['external']
         if args.state == 'absent':
             tasks.append(task)
             continue
@@ -272,7 +286,7 @@ def create_build_task(build, container_name, task_module):
         },
         'register': '__image_{}'.format(container_name)
     }
-    task_module['image'] = '{{{{ __image_{}.stdout_lines[-1] }}}}'.format(
+    task_module['image'] = '{{{{ __image_{}.image[0][\'RepoTags\'][0] }}}}'.format(
         container_name)
     return build_task
 
@@ -452,12 +466,18 @@ def parse_arguments():
     parser.add_argument('--depends-network',
                         action=argparse.BooleanOptionalAction,
                         help='create network out of dependencies')
+    parser.add_argument('--project', type=str, default="",
+                        help='define explicitly the project [default is doco\'s dir]')
     parser.add_argument('doco', type=argparse.FileType('r'),
                         help='a source docker compose file')
     parser.add_argument('podans', type=argparse.FileType('w'),
                         default=sys.stdout, nargs='?',
                         help='a target Ansible file')
     parsed_args = parser.parse_args()
+    if not parsed_args.project:
+        parsed_args.project = os.path.basename(
+            os.path.dirname(os.path.abspath(parsed_args.doco.name))
+        )
     return parsed_args
 
 
